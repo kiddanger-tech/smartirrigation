@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Background Circle (Tech Blue/Green theme) -->
+  <circle cx="32" cy="32" r="30" fill="#10B981"/>
+  <!-- Leaf and Water Drop Motif -->
+  <path d="M32 12C32 12 20 24 20 34C20 40.6274 25.3726 46 32 46C38.6274 46 44 40.6274 44 34C44 24 32 12 32 12Z" fill="#FFFFFF"/>
+  <path d="M32 24C32 24 26 30 26 36C26 39.3137 28.6863 42 32 42C35.3137 42 38 39.3137 38 36C38 30 32 24 32 24Z" fill="#065F46"/>
+</svg>
