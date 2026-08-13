@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Smart Irrigation</title>
+<meta name="description" content="Smart Irrigation — live field dashboard with soil, water and crop monitoring, and remote pump control.">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="alternate icon" href="favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; font-family:"Poppins", Arial, sans-serif; }
+  html, body { width:100%; background:radial-gradient(circle at top left, #0f172a, #020617 60%, #000000); color:white; }
+  body { position:relative; min-height:100vh; }
+  a { text-decoration:none; color:inherit; }
+  img { max-width:100%; display:block; }
+  ::selection{ background:#00f7ff; color:#020617; }
+  @media (prefers-reduced-motion: reduce){ *{ animation-duration:0.001ms !important; transition-duration:0.001ms !important; } }
+
+  .container { width:90%; max-width:1200px; margin:auto; }
+
+  /* LOADER */
+  #loader{
+    position:fixed; inset:0; background:#020617; display:flex; flex-direction:column;
+    justify-content:center; align-items:center; z-index:99999;
+    transition:opacity .8s ease, visibility .8s ease;
+  }
+  #loader.hide{ opacity:0; visibility:hidden; }
+  .loader-logo{
+    font-size:42px; font-weight:800; color:#00f7ff;
+    text-shadow:0 0 10px #00f7ff, 0 0 20px #00f7ff, 0 0 40px #00f7ff;
+    animation:pulseGlow 1.5s infinite alternate; margin-bottom:20px;
+  }
+  .loader-bar{ width:220px; height:8px; background:rgba(255,255,255,0.08); border-radius:20px; overflow:hidden; box-shadow:0 0 20px rgba(0,247,255,0.15); }
+  .loader-fill{ width:0%; height:100%; background:linear-gradient(90deg,#00f7ff,#22c55e); box-shadow:0 0 15px #00f7ff, 0 0 25px #22c55e; animation:loadingBar 2.4s ease forwards; }
+
+  /* PARTICLES */
+  .particles{ position:fixed; inset:0; overflow:hidden; z-index:0; pointer-events:none; }
+  .particle{ position:absolute; width:8px; height:8px; background:rgba(0,247,255,0.6); border-radius:50%; box-shadow:0 0 12px rgba(0,247,255,0.8); animation:floatParticle linear infinite; }
+  .particle:nth-child(2n){ background:rgba(34,197,94,0.55); box-shadow:0 0 12px rgba(34,197,94,0.75); }
+  body::before{ content:""; position:fixed; width:300px; height:300px; background:rgba(0,255,255,0.12); filter:blur(120px); top:50px; left:-50px; z-index:0; }
+  body::after{ content:""; position:fixed; width:300px; height:300px; background:rgba(34,197,94,0.10); filter:blur(120px); bottom:50px; right:-50px; z-index:0; }
+
+  /* SHELL */
+  .app-shell{ position:relative; z-index:2; width:100%; }
+
+  nav{
+    display:flex; justify-content:space-between; align-items:center; padding:18px 5%;
+    position:sticky; top:0; z-index:20; background:rgba(2,6,23,0.6);
+    backdrop-filter:blur(14px); border-bottom:1px solid rgba(0,247,255,0.08);
+  }
+  .logo{
+    font-size:26px; font-weight:800; color:#00f7ff; letter-spacing:0.5px;
+    text-shadow:0 0 5px #00f7ff, 0 0 10px #00f7ff, 0 0 20px #00f7ff, 0 0 40px #00f7ff;
+    animation:pulseGlow 2s infinite alternate; display:flex; align-items:center; gap:8px;
+  }
+  .logo .leaf{ font-size:22px; filter:drop-shadow(0 0 8px #22c55e); }
+  .nav-links{ display:flex; gap:6px; flex-wrap:wrap; font-size:14px; color:#cbd5e1; }
+  .nav-links a{ padding:8px 12px; border-radius:10px; transition:0.3s ease; }
+  .nav-links a:hover{ color:#00f7ff; background:rgba(0,247,255,0.08); box-shadow:0 0 10px rgba(0,247,255,0.12); }
+  .nav-cta{
+    font-weight:700; font-size:13px; padding:10px 20px; border-radius:14px; border:2px solid #22c55e;
+    color:#22c55e; background:transparent; cursor:pointer; transition:0.3s ease;
+  }
+  .nav-cta:hover{ background:#22c55e; color:#020617; }
+  .nav-cta.signed-in{ background:#22c55e; color:#020617; box-shadow:0 0 15px rgba(34,197,94,0.4); }
+  @media (max-width:900px){ .nav-links{ display:none; } }
+
+  /* HERO */
+  .hero{ min-height:calc(100vh - 90px); display:flex; align-items:center; justify-content:space-between; gap:40px; flex-wrap:wrap; padding:60px 0; }
+  .hero-text{ flex:1; min-width:280px; animation:fadeUp 1s ease; }
+  .eyebrow{
+    color:#22c55e; text-shadow:0 0 10px rgba(34,197,94,0.7); font-weight:700; font-size:14px;
+    text-transform:uppercase; letter-spacing:0.08em; margin-bottom:16px;
+  }
+  .hero-text h1{ font-size:3rem; line-height:1.2; margin-bottom:20px; font-weight:800; }
+  .hero-text h1 span{ color:#00f7ff; text-shadow:0 0 10px #00f7ff, 0 0 20px #00f7ff, 0 0 40px #00f7ff; }
+  .hero-text p{ font-size:1.05rem; color:#cbd5e1; margin-bottom:30px; max-width:520px; line-height:1.8; }
+  .hero-buttons{ display:flex; gap:14px; flex-wrap:wrap; }
+  .btn{
+    padding:14px 26px; border-radius:14px; font-weight:700; font-size:14px; transition:0.3s ease;
+    display:inline-block; border:none; cursor:pointer; text-align:center;
+  }
+  .btn-primary{ background:#00f7ff; color:#020617; box-shadow:0 0 10px #00f7ff, 0 0 20px #00f7ff, 0 0 40px rgba(0,247,255,0.5); }
+  .btn-primary:hover{ transform:translateY(-3px) scale(1.03); }
+  .btn-secondary{ border:2px solid #22c55e; color:#22c55e; box-shadow:0 0 15px rgba(34,197,94,0.25); background:transparent; }
+  .btn-secondary:hover{ background:#22c55e; color:#020617; }
+
+  .hero-card{
+    flex:1; min-width:300px; background:rgba(255,255,255,0.06); border:1px solid rgba(0,247,255,0.25);
+    backdrop-filter:blur(18px); border-radius:24px; padding:30px;
+    box-shadow:0 0 20px rgba(0,247,255,0.12), 0 0 40px rgba(34,197,94,0.08), 0 10px 40px rgba(0,0,0,0.35);
+    animation:fadeUp 1.2s ease;
+  }
+  .hero-card h3{ font-size:1.3rem; margin-bottom:20px; color:#00f7ff; text-shadow:0 0 10px rgba(0,247,255,0.8); }
+  .mini-box{
+    background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:18px;
+    padding:16px 18px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; transition:0.3s ease;
+  }
+  .mini-box:hover{ transform:translateY(-4px); border-color:#00f7ff; box-shadow:0 0 20px rgba(0,247,255,0.18); }
+  .mini-box span{ color:#cbd5e1; font-size:13px; }
+  .mini-box strong{ font-size:17px; }
+  .mini-box .mval{ font-size:22px; font-weight:800; color:#22c55e; text-shadow:0 0 8px rgba(34,197,94,0.6); }
+
+  /* SECTIONS */
+  section{ padding:70px 0; position:relative; z-index:2; }
+  .section-title{ text-align:center; font-size:2.1rem; margin-bottom:12px; font-weight:800; text-shadow:0 0 15px rgba(0,247,255,0.2); }
+  .section-sub{ text-align:center; color:#cbd5e1; margin-bottom:44px; max-width:760px; margin-left:auto; margin-right:auto; line-height:1.8; }
+
+  .grid-3{ display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:24px; }
+  .card{
+    background:rgba(255,255,255,0.05); border:1px solid rgba(0,247,255,0.12); border-radius:22px;
+    padding:26px; transition:0.35s ease; box-shadow:0 10px 30px rgba(0,0,0,0.25); backdrop-filter:blur(12px);
+  }
+  .card:hover{ transform:translateY(-8px) scale(1.02); border-color:#00f7ff; box-shadow:0 0 24px rgba(0,247,255,0.16); }
+  .card .tag{ color:#22c55e; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; }
+  .card h3{ margin:8px 0 10px; color:#00f7ff; font-size:1.2rem; text-shadow:0 0 10px rgba(0,247,255,0.5); }
+  .card p{ color:#cbd5e1; line-height:1.75; font-size:14px; }
+
+  /* FLOW */
+  .flow{ display:flex; gap:18px; flex-wrap:wrap; justify-content:center; }
+  .flow-step{
+    flex:1; min-width:170px; background:rgba(255,255,255,0.05); border:1px solid rgba(34,197,94,0.2);
+    border-radius:18px; padding:22px 20px; text-align:left; transition:0.3s ease;
+  }
+  .flow-step:hover{ border-color:#22c55e; box-shadow:0 0 18px rgba(34,197,94,0.18); transform:translateY(-4px); }
+  .flow-step .fnum{ color:#22c55e; font-weight:800; font-size:13px; text-shadow:0 0 8px rgba(34,197,94,0.6); }
+  .flow-step h4{ margin:8px 0 8px; font-size:1.02rem; color:#fff; }
+  .flow-step p{ font-size:13px; color:#cbd5e1; line-height:1.7; }
+
+  /* DASHBOARD */
+  .dash-section{ background:rgba(0,0,0,0.15); }
+  .auth-banner{
+    display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+    background:rgba(255,255,255,0.05); border:1px solid rgba(0,247,255,0.2); border-radius:18px;
+    padding:18px 22px; margin-bottom:32px; backdrop-filter:blur(12px);
+  }
+  .auth-banner p{ margin:0; font-size:14px; color:#cbd5e1; }
+  .google-btn{
+    display:inline-flex; align-items:center; gap:10px; background:#fff; color:#020617; border:none;
+    padding:11px 18px; border-radius:14px; font-weight:700; font-size:14px; cursor:pointer; transition:0.3s ease;
+  }
+  .google-btn:hover{ transform:translateY(-2px); box-shadow:0 0 15px rgba(255,255,255,0.3); }
+  .signout-btn{
+    background:transparent; border:2px solid rgba(255,255,255,0.25); color:#fff;
+    padding:10px 18px; border-radius:14px; font-size:13px; font-weight:700; cursor:pointer;
+  }
+
+  .dash-grid{ display:grid; grid-template-columns:1.3fr 1fr; gap:22px; }
+  @media (max-width:900px){ .dash-grid{ grid-template-columns:1fr; } .hero{ padding-top:10px; } .hero-text h1{ font-size:2.2rem; } }
+
+  .readings-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+  .reading-card{
+    background:rgba(255,255,255,0.05); border:1px solid rgba(0,247,255,0.15); border-radius:18px;
+    padding:20px 22px; transition:0.3s ease;
+  }
+  .reading-card:hover{ border-color:#00f7ff; box-shadow:0 0 18px rgba(0,247,255,0.15); }
+  .reading-card .rlbl{ font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:#94a3b8; }
+  .reading-card .rval{ font-size:2rem; font-weight:800; margin-top:8px; color:#00f7ff; text-shadow:0 0 10px rgba(0,247,255,0.5); }
+  .reading-card .rval .unit{ font-size:1rem; font-weight:500; color:#94a3b8; margin-left:2px; text-shadow:none; }
+  .reading-card .rtime{ font-size:12px; color:#64748b; margin-top:6px; }
+
+  .panel{
+    background:rgba(255,255,255,0.05); border:1px solid rgba(0,247,255,0.15); border-radius:18px; padding:22px;
+    backdrop-filter:blur(12px);
+  }
+  .panel h3{ font-size:1.05rem; margin:0 0 14px; color:#00f7ff; text-shadow:0 0 8px rgba(0,247,255,0.4); }
+  .crop-shot{ width:100%; border-radius:14px; border:1px solid rgba(0,247,255,0.15); aspect-ratio:4/3; object-fit:cover; background:rgba(255,255,255,0.03); }
+  .ai-summary{ font-size:13.5px; color:#cbd5e1; margin-top:14px; line-height:1.7; }
+  .health-tag{
+    display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700;
+    text-transform:uppercase; letter-spacing:0.05em; padding:6px 12px; border-radius:999px; margin-top:10px;
+  }
+  .health-tag.healthy{ background:rgba(34,197,94,0.15); color:#22c55e; box-shadow:0 0 10px rgba(34,197,94,0.2); }
+  .health-tag.alert{ background:rgba(255,90,90,0.15); color:#ff8787; box-shadow:0 0 10px rgba(255,90,90,0.2); }
+
+  .pump-panel{ margin-top:22px; }
+  .pump-row{ display:flex; align-items:center; justify-content:space-between; gap:16px; }
+  .pump-state{ font-size:14px; color:#cbd5e1; font-weight:600; }
+  .pump-toggle{
+    position:relative; width:56px; height:30px; border-radius:999px; border:none; cursor:pointer;
+    background:rgba(255,255,255,0.12); transition:background .2s; flex:none;
+  }
+  .pump-toggle::after{ content:''; position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:50%; background:#fff; transition:transform .2s; }
+  .pump-toggle.on{ background:#22c55e; box-shadow:0 0 15px rgba(34,197,94,0.5); }
+  .pump-toggle.on::after{ transform:translateX(26px); }
+  .pump-toggle:disabled{ opacity:0.4; cursor:not-allowed; }
+  .locked-note{ font-size:12.5px; color:#64748b; margin-top:10px; }
+  .status-msg{ font-size:12.5px; margin-top:10px; color:#22c55e; min-height:1em; }
+
+  footer{ padding:36px 0; text-align:center; color:#94a3b8; font-size:13px; border-top:1px solid rgba(255,255,255,0.08); position:relative; z-index:2; }
+
+  @keyframes fadeUp{ from{opacity:0; transform:translateY(25px);} to{opacity:1; transform:translateY(0);} }
+  @keyframes pulseGlow{ from{ text-shadow:0 0 8px #00f7ff,0 0 16px #00f7ff,0 0 28px rgba(0,247,255,0.7);} to{ text-shadow:0 0 12px #00f7ff,0 0 25px #00f7ff,0 0 45px rgba(34,197,94,0.5);} }
+  @keyframes loadingBar{ from{width:0%;} to{width:100%;} }
+  @keyframes floatParticle{ from{ transform:translateY(100vh) scale(0.6); opacity:0; } 20%{ opacity:1; } to{ transform:translateY(-10vh) scale(1.2); opacity:0; } }
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="loader-logo">SI</div>
+  <div class="loader-bar"><div class="loader-fill"></div></div>
+</div>
+
+<div class="particles">
+  <div class="particle" style="left:5%; animation-duration:12s; animation-delay:0s;"></div>
+  <div class="particle" style="left:12%; animation-duration:15s; animation-delay:2s;"></div>
+  <div class="particle" style="left:20%; animation-duration:10s; animation-delay:4s;"></div>
+  <div class="particle" style="left:30%; animation-duration:18s; animation-delay:1s;"></div>
+  <div class="particle" style="left:42%; animation-duration:14s; animation-delay:3s;"></div>
+  <div class="particle" style="left:55%; animation-duration:16s; animation-delay:5s;"></div>
+  <div class="particle" style="left:67%; animation-duration:11s; animation-delay:2s;"></div>
+  <div class="particle" style="left:78%; animation-duration:17s; animation-delay:6s;"></div>
+  <div class="particle" style="left:88%; animation-duration:13s; animation-delay:1s;"></div>
+  <div class="particle" style="left:95%; animation-duration:19s; animation-delay:4s;"></div>
+</div>
+
+<div class="app-shell">
+  <nav>
+    <div class="logo"><span class="leaf">🌱</span>SMART IRRIGATION</div>
+    <div class="nav-links">
+      <a href="#rig">The Rig</a>
+      <a href="#how">How It Works</a>
+      <a href="#dashboard">Dashboard</a>
+    </div>
+    <button class="nav-cta" id="navAuthBtn">Sign in</button>
+  </nav>
+
+  <div class="container">
+    <!-- HERO -->
+    <section class="hero" id="top">
+      <div class="hero-text">
+        <div class="eyebrow">Off-grid field station</div>
+        <h1>Your field, <span>reading itself</span> back to you</h1>
+        <p>A solar-powered rig watches soil moisture, water level, and crop health around the clock — and hands the pump control back to you from anywhere.</p>
+        <div class="hero-buttons">
+          <a href="#dashboard" class="btn btn-primary">Open Live Dashboard</a>
+          <a href="#rig" class="btn btn-secondary">See The Hardware</a>
+        </div>
+      </div>
+
+      <div class="hero-card">
+        <h3>⚡ Quick Status</h3>
+        <div class="mini-box">
+          <div><span>Soil Moisture</span><br><strong>Live from field sensor</strong></div>
+          <div class="mval" id="qSoil">—</div>
+        </div>
+        <div class="mini-box">
+          <div><span>Water Level</span><br><strong>Reservoir reading</strong></div>
+          <div class="mval" id="qWater">—</div>
+        </div>
+        <div class="mini-box">
+          <div><span>Pump</span><br><strong>Current state</strong></div>
+          <div class="mval" id="qPump">—</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- HARDWARE -->
+  <section id="rig">
+    <div class="container">
+      <h2 class="section-title">Built From Plywood, Not A Parts Catalog</h2>
+      <p class="section-sub">A wide pyramid base keeps it stable in open fields, with everything electronic tucked inside a sealed compartment out of the weather.</p>
+      <div class="grid-3">
+        <div class="card"><div class="tag">Brain</div><h3>ESP32 Dev Board</h3><p>Runs the show — reads every sensor, drives the pump relay, and updates the on-board LCD.</p></div>
+        <div class="card"><div class="tag">Soil</div><h3>Capacitive Moisture Sensor</h3><p>Tracks moisture at root depth without corroding like resistive probes.</p></div>
+        <div class="card"><div class="tag">Air</div><h3>DHT11 Temp / Humidity</h3><p>Local climate context — heat stress looks different from drought stress.</p></div>
+        <div class="card"><div class="tag">Water</div><h3>JSN-SR04T Ultrasonic</h3><p>Watertight level sensing for the reservoir with no contact with the water itself.</p></div>
+        <div class="card"><div class="tag">Control</div><h3>Relay Pump + Buzzer</h3><p>Switches irrigation on demand and sounds a local alert when something needs attention.</p></div>
+        <div class="card"><div class="tag">Vision</div><h3>ESP32-CAM</h3><p>Photographs the crop on a schedule, watching for pest damage and rodent activity.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section id="how">
+    <div class="container">
+      <h2 class="section-title">From Soil To Screen, In Five Hops</h2>
+      <p class="section-sub">Every reading and photo makes the same trip — off the field, through analysis, and onto your dashboard.</p>
+      <div class="flow">
+        <div class="flow-step"><div class="fnum">01</div><h4>Sense</h4><p>ESP32 polls soil, water, temperature and humidity sensors.</p></div>
+        <div class="flow-step"><div class="fnum">02</div><h4>Capture</h4><p>ESP32-CAM snaps a crop photo, checking for pests and rodents.</p></div>
+        <div class="flow-step"><div class="fnum">03</div><h4>Sync</h4><p>Readings and images upload straight to Supabase.</p></div>
+        <div class="flow-step"><div class="fnum">04</div><h4>Analyze</h4><p>Gemini reviews each photo and payload for plant health signals.</p></div>
+        <div class="flow-step"><div class="fnum">05</div><h4>Act</h4><p>You watch it live below, and toggle the pump remotely.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section class="dash-section" id="dashboard">
+    <div class="container">
+      <h2 class="section-title">What The Field Looked Like Just Now</h2>
+      <p class="section-sub">Readings and the latest crop photo are open to view. Sign in with Google to control the pump.</p>
+
+      <div class="auth-banner">
+        <p id="authText">You're viewing live sensor data. Sign in with Google to unlock pump control.</p>
+        <div id="authArea">
+          <button class="google-btn" id="googleBtn">
+            <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.9C16.64 14.2 17.64 11.9 17.64 9.2z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.26c-.8.54-1.84.86-3.06.86-2.35 0-4.34-1.59-5.05-3.72H.9v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.95 10.7A5.4 5.4 0 0 1 3.67 9c0-.59.1-1.17.28-1.7V4.97H.9A9 9 0 0 0 0 9c0 1.45.35 2.83.9 4.03l3.05-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.46 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .9 4.97l3.05 2.33C4.66 5.17 6.65 3.58 9 3.58z"/></svg>
+            Sign in with Google
+          </button>
+        </div>
+      </div>
+
+      <div class="dash-grid">
+        <div>
+          <div class="readings-grid" id="readingsGrid">
+            <div class="reading-card"><div class="rlbl">Soil Moisture</div><div class="rval">—<span class="unit">%</span></div><div class="rtime" id="t-soil">waiting for data…</div></div>
+            <div class="reading-card"><div class="rlbl">Temperature</div><div class="rval">—<span class="unit">°C</span></div><div class="rtime" id="t-temp">waiting for data…</div></div>
+            <div class="reading-card"><div class="rlbl">Humidity</div><div class="rval">—<span class="unit">%</span></div><div class="rtime" id="t-hum">waiting for data…</div></div>
+            <div class="reading-card"><div class="rlbl">Water Level</div><div class="rval">—<span class="unit">cm</span></div><div class="rtime" id="t-water">waiting for data…</div></div>
+          </div>
+
+          <div class="panel pump-panel">
+            <h3>Pump Control</h3>
+            <div class="pump-row">
+              <div class="pump-state" id="pumpStateLabel">Status unknown</div>
+              <button class="pump-toggle" id="pumpToggle" disabled></button>
+            </div>
+            <p class="locked-note" id="pumpLockedNote">Sign in with Google to control the pump.</p>
+            <p class="status-msg" id="pumpStatusMsg"></p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Latest Crop Snapshot</h3>
+          <img class="crop-shot" id="cropImg" src="" alt="Latest crop snapshot" style="display:none;">
+          <div class="crop-shot" id="cropPlaceholder" style="display:flex;align-items:center;justify-content:center;font-size:12.5px;color:#64748b;">No image yet</div>
+          <span class="health-tag healthy" id="healthTag" style="display:none;">Healthy</span>
+          <p class="ai-summary" id="aiSummary"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">SMART IRRIGATION · Field data via Supabase · Vision analysis via Gemini</div>
+  </footer>
+</div>
+
+<script>
+  window.addEventListener("load", () => {
+    setTimeout(() => { document.getElementById("loader").classList.add("hide"); }, 2200);
+  });
+
+  // ---------- CONFIG ----------
+  const SUPABASE_URL = 'https://ycrzhgovnndhetmrgbza.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InljcnpoZ292bm5kaGV0bXJnYnphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MzE0NDYsImV4cCI6MjA5OTEwNzQ0Nn0.VUuI7kdOuJ941VAQHdPdMTXJVE8WpSXDLXxH_n8I_L8';
+
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  let currentUser = null;
+  let pumpIsOn = false;
+
+  // ---------- AUTH ----------
+  async function initAuth(){
+    const { data: { session } } = await sb.auth.getSession();
+    handleSession(session);
+    sb.auth.onAuthStateChange((_event, session) => handleSession(session));
+  }
+
+  function googleSvg(){
+    return `<svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.9C16.64 14.2 17.64 11.9 17.64 9.2z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.26c-.8.54-1.84.86-3.06.86-2.35 0-4.34-1.59-5.05-3.72H.9v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.95 10.7A5.4 5.4 0 0 1 3.67 9c0-.59.1-1.17.28-1.7V4.97H.9A9 9 0 0 0 0 9c0 1.45.35 2.83.9 4.03l3.05-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.46 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .9 4.97l3.05 2.33C4.66 5.17 6.65 3.58 9 3.58z"/></svg>`;
+  }
+
+  function handleSession(session){
+    currentUser = session?.user || null;
+    const navBtn = document.getElementById('navAuthBtn');
+    const authText = document.getElementById('authText');
+    const authArea = document.getElementById('authArea');
+    const pumpToggle = document.getElementById('pumpToggle');
+    const pumpLockedNote = document.getElementById('pumpLockedNote');
+
+    if(currentUser){
+      navBtn.textContent = 'Sign out';
+      navBtn.classList.add('signed-in');
+      authText.textContent = `Signed in as ${currentUser.email}. Pump control unlocked.`;
+      authArea.innerHTML = '<button class="signout-btn" id="signOutBtn2">Sign out</button>';
+      document.getElementById('signOutBtn2').onclick = signOut;
+      pumpToggle.disabled = false;
+      pumpLockedNote.style.display = 'none';
+    } else {
+      navBtn.textContent = 'Sign in';
+      navBtn.classList.remove('signed-in');
+      authText.textContent = "You're viewing live sensor data. Sign in with Google to unlock pump control.";
+      authArea.innerHTML = `<button class="google-btn" id="googleBtn2">${googleSvg()}Sign in with Google</button>`;
+      document.getElementById('googleBtn2').onclick = signIn;
+      pumpToggle.disabled = true;
+      pumpLockedNote.style.display = 'block';
+    }
+    navBtn.onclick = currentUser ? signOut : signIn;
+  }
+
+  async function signIn(){
+    await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.href } });
+  }
+  async function signOut(){
+    await sb.auth.signOut();
+  }
+  document.getElementById('googleBtn').onclick = signIn;
+
+  // ---------- READINGS ----------
+  function timeAgo(iso){
+    if(!iso) return 'waiting for data…';
+    const diff = Math.floor((Date.now() - new Date(iso).getTime())/1000);
+    if(diff < 60) return `${diff}s ago`;
+    if(diff < 3600) return `${Math.floor(diff/60)}m ago`;
+    if(diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+    return `${Math.floor(diff/86400)}d ago`;
+  }
+
+  function setReading(idx, value, timeId, timeIso){
+    const cards = document.querySelectorAll('#readingsGrid .reading-card .rval');
+    const unit = cards[idx].querySelector('.unit').outerHTML;
+    cards[idx].innerHTML = `${value ?? '—'}${unit}`;
+    document.getElementById(timeId).textContent = timeAgo(timeIso);
+  }
+
+  async function loadLatestSensorReading(){
+    const { data, error } = await sb
+      .from('sensor_readings')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if(error || !data || !data.length){ return; }
+    const r = data[0];
+    setReading(0, r.soil_moisture, 't-soil', r.created_at);
+    setReading(1, r.temperature, 't-temp', r.created_at);
+    setReading(2, r.humidity, 't-hum', r.created_at);
+    setReading(3, r.water_level, 't-water', r.created_at);
+    document.getElementById('qSoil').textContent = r.soil_moisture != null ? `${r.soil_moisture}%` : '—';
+    document.getElementById('qWater').textContent = r.water_level != null ? `${r.water_level}cm` : '—';
+    pumpIsOn = !!r.pump_status;
+    reflectPumpUI();
+  }
+
+  async function loadLatestCropAnalysis(){
+    const { data, error } = await sb
+      .from('crop_analysis')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if(error || !data || !data.length){ return; }
+    const c = data[0];
+    const img = document.getElementById('cropImg');
+    const placeholder = document.getElementById('cropPlaceholder');
+    if(c.image_url){
+      img.src = c.image_url;
+      img.style.display = 'block';
+      placeholder.style.display = 'none';
+    }
+    const tag = document.getElementById('healthTag');
+    if(c.plant_health){
+      tag.textContent = c.pest_detected ? `${c.plant_health} · ${c.pest_type || 'pest flagged'}` : c.plant_health;
+      tag.className = 'health-tag ' + (c.pest_detected || /stress|disease/i.test(c.plant_health || '') ? 'alert' : 'healthy');
+      tag.style.display = 'inline-flex';
+    }
+    document.getElementById('aiSummary').textContent = c.ai_summary || '';
+  }
+
+  // ---------- PUMP CONTROL ----------
+  function reflectPumpUI(){
+    const toggle = document.getElementById('pumpToggle');
+    const label = document.getElementById('pumpStateLabel');
+    toggle.classList.toggle('on', pumpIsOn);
+    label.textContent = pumpIsOn ? 'Pump is running' : 'Pump is off';
+    document.getElementById('qPump').textContent = pumpIsOn ? 'ON' : 'OFF';
+  }
+
+  async function togglePump(){
+    if(!currentUser) return;
+    const desired = pumpIsOn ? 'off' : 'on';
+    const statusMsg = document.getElementById('pumpStatusMsg');
+    statusMsg.textContent = 'Sending command…';
+    const { error } = await sb.from('pump_commands').insert({
+      command: desired,
+      issued_by: currentUser.email
+    });
+    if(error){
+      statusMsg.textContent = 'Could not send command — try again.';
+      return;
+    }
+    pumpIsOn = desired === 'on';
+    reflectPumpUI();
+    statusMsg.textContent = `Command sent: pump ${desired}.`;
+    setTimeout(() => { statusMsg.textContent = ''; }, 4000);
+  }
+  document.getElementById('pumpToggle').addEventListener('click', togglePump);
+
+  // ---------- REALTIME ----------
+  function subscribeRealtime(){
+    sb.channel('sensor_readings_changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sensor_readings' }, loadLatestSensorReading)
+      .subscribe();
+    sb.channel('crop_analysis_changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'crop_analysis' }, loadLatestCropAnalysis)
+      .subscribe();
+  }
+
+  // ---------- INIT ----------
+  (async function init(){
+    await initAuth();
+    await loadLatestSensorReading();
+    await loadLatestCropAnalysis();
+    subscribeRealtime();
+    setInterval(loadLatestSensorReading, 30000);
+  })();
+</script>
+
+</body>
+</html>
